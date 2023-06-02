@@ -1,0 +1,56 @@
+#!/bin/bash
+cd /etc/wireguard
+
+PWD=`pwd`
+
+MAIN_CONF=$PWD/wg0.conf
+NETWORK="10.0.5.0/24"
+DNS_SERVER=10.0.5.1
+ENDPOINT=vpn1.kliqit.io
+
+read -p "enter client name [no spaces]:" CLIENT_NAME
+read -p "enter desired ip address: " IP_ADDRESS
+
+if [ -f $PWD/$CLIENT_NAME.conf ]; then
+	echo "client exists..."
+	exit 0
+else
+	CLIENT_PVT_KEY=`wg genkey` > /dev/null
+	CLIENT_PUB_KEY=`echo $CLIENT_PVT_KEY | wg pubkey` > /dev/null
+	CLIENT_SHARED_KEY=`wg genpsk` > /dev/null
+	SERVER_PUB_KEY=`cat $PWD/public.key`
+	
+	systemctl stop wg-quick@wg0.service
+
+	echo "" >> $MAIN_CONF
+	echo "# $CLIENT_NAME"
+	echo "[Peer]" >> $MAIN_CONF
+	echo "PublicKey = $CLIENT_PUB_KEY" >> $MAIN_CONF
+	echo "PresharedKey = $CLIENT_SHARED_KEY" >> $MAIN_CONF
+	echo "AllowedIPs = $IP_ADDRESS/32" >> $MAIN_CONF
+	echo "PersistentKeepalive = 25" >> $MAIN_CONF
+
+	echo "[Interface]" >> $PWD/clients/$CLIENT_NAME.conf
+	echo "PrivateKey = $CLIENT_PVT_KEY" >> $PWD/clients/$CLIENT_NAME.conf
+	echo "Address = $IP_ADDRESS/24" >> $PWD/clients/$CLIENT_NAME.conf
+	echo "DNS = $DNS_SERVER" >> $PWD/clients/$CLIENT_NAME.conf
+	echo "" >> $PWD/clients/$CLIENT_NAME.conf
+	echo "[Peer]" >> $PWD/clients/$CLIENT_NAME.conf
+	echo "PublicKey = $SERVER_PUB_KEY" >> $PWD/clients/$CLIENT_NAME.conf
+	echo "PresharedKey = $CLIENT_SHARED_KEY" >> $PWD/clients/$CLIENT_NAME.conf
+	echo "AllowedIPs = $NETWORK" >> $PWD/clients/$CLIENT_NAME.conf
+	echo "Endpoint = vpn1.kliqit.io:23" >> $PWD/clients/$CLIENT_NAME.conf
+
+	echo "you can copy the following and add to your wireguard tunnel"
+	echo "######################################################################"
+	cat $PWD/clients/$CLIENT_NAME.conf
+	echo "######################################################################"
+
+	if [ -f $PWD/clients/$CLIENT_NAME.conf ]; then
+		qrencode -t ansiutf8 -r $PWD/clients/$CLIENT_NAME.conf
+	fi
+	systemctl restart wg-quick@wg0.service
+	wg show
+fi 
+
+cd
